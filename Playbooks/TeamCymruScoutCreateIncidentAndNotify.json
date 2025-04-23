@@ -1,0 +1,834 @@
+{
+    "definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "contentVersion": "1.0.0.0",
+        "triggers": {
+            "manual": {
+                "type": "Request",
+                "kind": "Http",
+                "inputs": {
+                    "schema": {
+                        "properties": {
+                            "country_code": {
+                                "type": "string"
+                            },
+                            "fetch_from_logs": {
+                                "type": "boolean"
+                            },
+                            "base_url": {
+                                "type": "string"
+                            },
+                            "indicator_value": {
+                                "type": "string"
+                            },
+                            "insights": {
+                                "items": {
+                                    "required": [],
+                                    "type": "object"
+                                },
+                                "type": "array"
+                            },
+                            "open_ports": {
+                                "items": {
+                                    "required": [],
+                                    "type": "object"
+                                },
+                                "type": "array"
+                            },
+                            "pdns": {
+                                "items": {
+                                    "required": [],
+                                    "type": "object"
+                                },
+                                "type": "array"
+                            },
+                            "time_range": {
+                                "type": "string"
+                            }
+                        },
+                        "type": "object"
+                    }
+                }
+            }
+        },
+        "actions": {
+            "Add_Insights_Details_To_Incident_Comment_(V3)": {
+                "runAfter": {
+                    "Add_Scout_link_To_Incident_Comment": [
+                        "Succeeded",
+                        "TimedOut",
+                        "Failed"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": {
+                        "incidentArmId": "@body('Create_Incident_For_Malicious_IP')?['id']",
+                        "message": "<p><strong>IP:</strong> @{triggerBody()?['indicator_value']}<br>\n<strong>Country Code:</strong> @{variables('country_code')}<br>\n<strong>Insights:</strong><br>\n@{variables('insights_html_table')}</p>"
+                    },
+                    "path": "/Incidents/Comment"
+                }
+            },
+            "Add_Open_Ports_Details_To_Incident_Comment_(V3)": {
+                "runAfter": {
+                    "Add_Scout_link_To_Incident_Comment": [
+                        "Succeeded",
+                        "TimedOut",
+                        "Failed"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": {
+                        "incidentArmId": "@body('Create_Incident_For_Malicious_IP')?['id']",
+                        "message": "<p><strong>IP: </strong>@{triggerBody()?['indicator_value']}<br>\n<strong>Country Code: </strong>@{variables('country_code')}<strong><br>\nOpen Ports:<br>\n</strong>@{variables('open_ports_html_table')}</p>"
+                    },
+                    "path": "/Incidents/Comment"
+                }
+            },
+            "Add_PDNS_Details_To_Incident_Comment_(V3)": {
+                "runAfter": {
+                    "Add_Scout_link_To_Incident_Comment": [
+                        "Succeeded",
+                        "TimedOut",
+                        "Failed"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": {
+                        "incidentArmId": "@body('Create_Incident_For_Malicious_IP')?['id']",
+                        "message": "<p><strong>IP: </strong>@{triggerBody()?['indicator_value']}<br>\n<strong>Country Code:</strong> @{variables('country_code')}<br>\n<strong>PDNS:</strong><br>\n@{variables('pdns_html_table')}</p>"
+                    },
+                    "path": "/Incidents/Comment"
+                }
+            },
+            "Condition_To_Fetch_Data_From_Logs_If_Flag_Set_To_True": {
+                "actions": {
+                    "Condition_To_Add_Insights_Data_In_HTML_Table_If_It_Is_Available_In_Logs": {
+                        "actions": {
+                            "Complete_HTML_Table_For_Insights_Data": {
+                                "runAfter": {
+                                    "For_Each_Insights_Data": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "AppendToStringVariable",
+                                "inputs": {
+                                    "name": "insights_html_table",
+                                    "value": "</table>"
+                                }
+                            },
+                            "Compose_An_Array_For_Insights_Data": {
+                                "type": "Compose",
+                                "inputs": "@json(body('Run_Query_And_List_Data_For_Indicator')?['value'][0]?['Insights'])"
+                            },
+                            "For_Each_Insights_Data": {
+                                "foreach": "@outputs('Compose_An_Array_For_Insights_Data')",
+                                "actions": {
+                                    "Append_Insight_To_Insights_HTML_Table": {
+                                        "type": "AppendToStringVariable",
+                                        "inputs": {
+                                            "name": "insights_html_table",
+                                            "value": "<tr><td>@{items('For_Each_Insights_Data')?['rating']}</td><td>@{items('For_Each_Insights_Data')?['message']}</td></tr>"
+                                        }
+                                    }
+                                },
+                                "runAfter": {
+                                    "Compose_An_Array_For_Insights_Data": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "Foreach"
+                            }
+                        },
+                        "runAfter": {
+                            "Set_Country_Code_From_Logs_Data": [
+                                "Succeeded"
+                            ]
+                        },
+                        "else": {
+                            "actions": {
+                                "Set_Insights_HTML_Table_For_No_Insights_Record_Found": {
+                                    "type": "SetVariable",
+                                    "inputs": {
+                                        "name": "insights_html_table",
+                                        "value": "<b> No Insights Data Found in Logs. </b>"
+                                    }
+                                }
+                            }
+                        },
+                        "expression": {
+                            "and": [
+                                {
+                                    "not": {
+                                        "equals": [
+                                            "@empty(body('Run_Query_And_List_Data_For_Indicator')?['value'][0]?['Insights'])",
+                                            "@true"
+                                        ]
+                                    }
+                                }
+                            ]
+                        },
+                        "type": "If"
+                    },
+                    "Condition_To_Add_Open_Ports_Data_In_HTML_Table_If_It_Is_Available_In_Logs": {
+                        "actions": {
+                            "Complete_HTML_Table_For_Open_Ports_Data": {
+                                "runAfter": {
+                                    "For_Each_Port_Data": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "AppendToStringVariable",
+                                "inputs": {
+                                    "name": "open_ports_html_table",
+                                    "value": "</table>"
+                                }
+                            },
+                            "Compose_An_Array_For_Open_Ports_Data": {
+                                "type": "Compose",
+                                "inputs": "@json(body('Run_Query_And_List_Data_For_Indicator')?['value'][0]?['OpenPortsDetails'])"
+                            },
+                            "For_Each_Port_Data": {
+                                "foreach": "@outputs('Compose_An_Array_For_Open_Ports_Data')",
+                                "actions": {
+                                    "Append_Data_To_HTML_Variable": {
+                                        "type": "AppendToStringVariable",
+                                        "inputs": {
+                                            "name": "open_ports_html_table",
+                                            "value": "<tr><td>@{items('For_Each_Port_Data')?['port']}</td><td>@{items('For_Each_Port_Data')?['protocol']}</td><td>@{items('For_Each_Port_Data')?['protocol_text']}</td><td>@{items('For_Each_Port_Data')?['event_count']}</td></tr>"
+                                        }
+                                    }
+                                },
+                                "runAfter": {
+                                    "Compose_An_Array_For_Open_Ports_Data": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "Foreach"
+                            }
+                        },
+                        "runAfter": {
+                            "Set_Country_Code_From_Logs_Data": [
+                                "Succeeded"
+                            ]
+                        },
+                        "else": {
+                            "actions": {
+                                "Set_Open_Ports_HTML_Table_Data_For_No_Open_Ports_Record_Found": {
+                                    "type": "SetVariable",
+                                    "inputs": {
+                                        "name": "open_ports_html_table",
+                                        "value": "<b> No Open Ports Data Found in Logs. </b>"
+                                    }
+                                }
+                            }
+                        },
+                        "expression": {
+                            "and": [
+                                {
+                                    "not": {
+                                        "equals": [
+                                            "@empty(body('Run_Query_And_List_Data_For_Indicator')?['value'][0]?['OpenPortsDetails'])",
+                                            "@true"
+                                        ]
+                                    }
+                                }
+                            ]
+                        },
+                        "type": "If"
+                    },
+                    "Condition_To_Add_PDNS_Data_In_HTML_Table_If_It_Is_Available_In_Logs": {
+                        "actions": {
+                            "Complete_HTML_Table_For_PDNS_Data": {
+                                "runAfter": {
+                                    "For_Each_PDNS_Data": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "AppendToStringVariable",
+                                "inputs": {
+                                    "name": "pdns_html_table",
+                                    "value": "</table>"
+                                }
+                            },
+                            "Compose_An_Array_For_PDNS_Data": {
+                                "type": "Compose",
+                                "inputs": "@json(body('Run_Query_And_List_Data_For_Indicator')?['value'][0]?['PDNSDetails'])"
+                            },
+                            "For_Each_PDNS_Data": {
+                                "foreach": "@outputs('Compose_An_Array_For_PDNS_Data')",
+                                "actions": {
+                                    "Append_Data_To_PDNS_HTML_Table": {
+                                        "type": "AppendToStringVariable",
+                                        "inputs": {
+                                            "name": "pdns_html_table",
+                                            "value": "<tr><td>@{items('For_Each_PDNS_Data')?['domain']}</td><td>@{items('For_Each_PDNS_Data')?['event_count']}</td></tr>"
+                                        }
+                                    }
+                                },
+                                "runAfter": {
+                                    "Compose_An_Array_For_PDNS_Data": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "Foreach"
+                            }
+                        },
+                        "runAfter": {
+                            "Set_Country_Code_From_Logs_Data": [
+                                "Succeeded"
+                            ]
+                        },
+                        "else": {
+                            "actions": {
+                                "Set_PDNS_HTML_Data_For_No_PDNS_Record_Found": {
+                                    "type": "SetVariable",
+                                    "inputs": {
+                                        "name": "pdns_html_table",
+                                        "value": "<b> No PDNS Data Found in Logs. </b>"
+                                    }
+                                }
+                            }
+                        },
+                        "expression": {
+                            "and": [
+                                {
+                                    "not": {
+                                        "equals": [
+                                            "@empty(body('Run_Query_And_List_Data_For_Indicator')?['value'][0]?['PDNSDetails'])",
+                                            "@true"
+                                        ]
+                                    }
+                                }
+                            ]
+                        },
+                        "type": "If"
+                    },
+                    "Run_Query_And_List_Data_For_Indicator": {
+                        "type": "ApiConnection",
+                        "inputs": {
+                            "host": {
+                                "connection": {
+                                    "name": "@parameters('$connections')['azuremonitorlogs']['connectionId']"
+                                }
+                            },
+                            "method": "post",
+                            "body": "CymruScoutIP\n| where Indicator == \"@{triggerBody()?['indicator_value']}\"\n| summarize arg_max(TimeGenerated, *) by Indicator\n| project PDNSDetails,  OpenPortsDetails, Insights, IPCountryCode",
+                            "path": "/queryData",
+                            "queries": {
+                                "subscriptions": "e0687f99-527c-4ffe-b7d5-d6cb9d563dc2",
+                                "resourcegroups": "R15_RubrikIntegration_35821",
+                                "resourcetype": "Log Analytics Workspace",
+                                "resourcename": "cymrutestm",
+                                "timerange": "@triggerBody()?['time_range']"
+                            }
+                        }
+                    },
+                    "Set_Country_Code_From_Logs_Data": {
+                        "runAfter": {
+                            "Run_Query_And_List_Data_For_Indicator": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "SetVariable",
+                        "inputs": {
+                            "name": "country_code",
+                            "value": "@{if(empty(body('Run_Query_And_List_Data_For_Indicator')?['value'][0]?['IPCountryCode']), 'No Country Code Found', body('Run_Query_And_List_Data_For_Indicator')?['value'][0]?['IPCountryCode'])}"
+                        }
+                    }
+                },
+                "runAfter": {
+                    "Initialize_Country_Code": [
+                        "Succeeded"
+                    ]
+                },
+                "else": {
+                    "actions": {
+                        "Condition_To_Add_Insights_Data_To_HTML_Table_If_It_Is_Available": {
+                            "actions": {
+                                "Complete_Insights_HTML_Table": {
+                                    "runAfter": {
+                                        "For_Each_Insights": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "type": "AppendToStringVariable",
+                                    "inputs": {
+                                        "name": "insights_html_table",
+                                        "value": "</table>"
+                                    }
+                                },
+                                "For_Each_Insights": {
+                                    "foreach": "@triggerBody()?['insights']",
+                                    "actions": {
+                                        "Append_Insights_Information_To_Insights_HTML_Table": {
+                                            "type": "AppendToStringVariable",
+                                            "inputs": {
+                                                "name": "insights_html_table",
+                                                "value": "<tr><td>@{items('For_Each_Insights')?['rating']}</td><td>@{items('For_Each_Insights')?['message']}</td></tr>"
+                                            }
+                                        }
+                                    },
+                                    "type": "Foreach"
+                                }
+                            },
+                            "runAfter": {
+                                "Condition_To_Add_PDNS_Data_To_HTML_Table_If_It_Is_Available": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "else": {
+                                "actions": {
+                                    "Set_Insights_HTML_Table_Data_For_No_Insights_Found": {
+                                        "type": "SetVariable",
+                                        "inputs": {
+                                            "name": "insights_html_table",
+                                            "value": "<b> No Insights Found. </b>"
+                                        }
+                                    }
+                                }
+                            },
+                            "expression": {
+                                "and": [
+                                    {
+                                        "not": {
+                                            "equals": [
+                                                "@triggerBody()?['insights']",
+                                                "@null"
+                                            ]
+                                        }
+                                    }
+                                ]
+                            },
+                            "type": "If"
+                        },
+                        "Condition_To_Add_Open_Ports_Data_To_HTML_Table_If_It_Is_Available": {
+                            "actions": {
+                                "Complete_Open_Ports_HTML_Table": {
+                                    "runAfter": {
+                                        "For_Each_Open_Port": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "type": "AppendToStringVariable",
+                                    "inputs": {
+                                        "name": "open_ports_html_table",
+                                        "value": "</table>"
+                                    }
+                                },
+                                "For_Each_Open_Port": {
+                                    "foreach": "@triggerBody()?['open_ports']",
+                                    "actions": {
+                                        "Append_Each_Port_Details_To_HTML_Table": {
+                                            "type": "AppendToStringVariable",
+                                            "inputs": {
+                                                "name": "open_ports_html_table",
+                                                "value": "<tr><td>@{items('For_Each_Open_Port')?['port']}</td><td>@{items('For_Each_Open_Port')?['protocol']}</td><td>@{items('For_Each_Open_Port')?['protocol_text']}</td><td>@{items('For_Each_Open_Port')?['event_count']}</td></tr>"
+                                            }
+                                        }
+                                    },
+                                    "type": "Foreach"
+                                }
+                            },
+                            "else": {
+                                "actions": {
+                                    "Set_Open_Ports_HTML_Table_Data_For_No_Data_Found": {
+                                        "type": "SetVariable",
+                                        "inputs": {
+                                            "name": "open_ports_html_table",
+                                            "value": "<b> No Open Ports Details Found. </b>"
+                                        }
+                                    }
+                                }
+                            },
+                            "expression": {
+                                "and": [
+                                    {
+                                        "not": {
+                                            "equals": [
+                                                "@triggerBody()?['open_ports']",
+                                                "@null"
+                                            ]
+                                        }
+                                    }
+                                ]
+                            },
+                            "type": "If"
+                        },
+                        "Condition_To_Add_PDNS_Data_To_HTML_Table_If_It_Is_Available": {
+                            "actions": {
+                                "Complete_PDNS_HTML_Table": {
+                                    "runAfter": {
+                                        "For_Each_PDNS": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "type": "AppendToStringVariable",
+                                    "inputs": {
+                                        "name": "pdns_html_table",
+                                        "value": "</table>"
+                                    }
+                                },
+                                "For_Each_PDNS": {
+                                    "foreach": "@triggerBody()?['pdns']",
+                                    "actions": {
+                                        "Append_PDNS_To_PDNS_HTML_Table": {
+                                            "type": "AppendToStringVariable",
+                                            "inputs": {
+                                                "name": "pdns_html_table",
+                                                "value": "<tr><td>@{items('For_Each_PDNS')?['domain']}</td><td>@{items('For_Each_PDNS')?['event_count']}</td></tr>"
+                                            }
+                                        }
+                                    },
+                                    "type": "Foreach"
+                                }
+                            },
+                            "runAfter": {
+                                "Condition_To_Add_Open_Ports_Data_To_HTML_Table_If_It_Is_Available": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "else": {
+                                "actions": {
+                                    "Set_PDNS_HTML_Table_Data_For_No_PDNS_Found": {
+                                        "type": "SetVariable",
+                                        "inputs": {
+                                            "name": "pdns_html_table",
+                                            "value": "<b> No PDNS Details Found. </b>"
+                                        }
+                                    }
+                                }
+                            },
+                            "expression": {
+                                "and": [
+                                    {
+                                        "not": {
+                                            "equals": [
+                                                "@triggerBody()?['pdns']",
+                                                "@null"
+                                            ]
+                                        }
+                                    }
+                                ]
+                            },
+                            "type": "If"
+                        },
+                        "Set_Country_Code": {
+                            "runAfter": {
+                                "Condition_To_Add_Insights_Data_To_HTML_Table_If_It_Is_Available": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "type": "SetVariable",
+                            "inputs": {
+                                "name": "country_code",
+                                "value": "@{if(empty(triggerBody()?['country_code']), 'No Country Code Found', triggerBody()?['country_code'])}"
+                            }
+                        }
+                    }
+                },
+                "expression": {
+                    "and": [
+                        {
+                            "equals": [
+                                "@triggerBody()?['fetch_from_logs']",
+                                "@true"
+                            ]
+                        }
+                    ]
+                },
+                "type": "If"
+            },
+            "Create_Incident_For_Malicious_IP": {
+                "runAfter": {
+                    "Condition_To_Fetch_Data_From_Logs_If_Flag_Set_To_True": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuresentinel']['connectionId']"
+                        }
+                    },
+                    "method": "put",
+                    "body": {
+                        "title": "Found Malicious IP: @{triggerBody()?['indicator_value']}",
+                        "severity": "High",
+                        "status": "New",
+                        "description": "Found malicious ip: @{triggerBody()?['indicator_value']} for Team Cymru Scout."
+                    },
+                    "path": "/Incidents/subscriptions/e0687f99-527c-4ffe-b7d5-d6cb9d563dc2/resourceGroups/R15_RubrikIntegration_35821/workspaces/cymrutestm"
+                }
+            },
+            "Initialize_Country_Code": {
+                "runAfter": {
+                    "Initialize_Insights_HTML_Table": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable",
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "country_code",
+                            "type": "string"
+                        }
+                    ]
+                }
+            },
+            "Initialize_Email_ID": {
+                "runAfter": {},
+                "type": "InitializeVariable",
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "email_recipient",
+                            "type": "string",
+                            "value": "@parameters('email_id')"
+                        }
+                    ]
+                }
+            },
+            "Initialize_HTML_Table_For_Open_Ports_Data": {
+                "runAfter": {
+                    "Initialize_Scout_Link": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable",
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "open_ports_html_table",
+                            "type": "string",
+                            "value": "<table border=\"1\"><tr><th>Port</th><th>Protocol</th><th>Protocol Name</th><th>Events</th></tr>"
+                        }
+                    ]
+                }
+            },
+            "Initialize_Insights_HTML_Table": {
+                "runAfter": {
+                    "Initialize_PDNS_HTML_Table": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable",
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "insights_html_table",
+                            "type": "string",
+                            "value": "<table border=\"1\"><tr><th>Rating</th><th>Message</th></tr>"
+                        }
+                    ]
+                }
+            },
+            "Initialize_PDNS_HTML_Table": {
+                "runAfter": {
+                    "Initialize_HTML_Table_For_Open_Ports_Data": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable",
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "pdns_html_table",
+                            "type": "string",
+                            "value": "<table border=\"1\"><tr><th>Domain</th><th>Events</th></tr>"
+                        }
+                    ]
+                }
+            },
+            "Response_To_Indicate_Failure": {
+                "runAfter": {
+                    "Send_An_Email_(V2)": [
+                        "Failed"
+                    ]
+                },
+                "type": "Response",
+                "kind": "Http",
+                "inputs": {
+                    "statusCode": 400,
+                    "body": {
+                        "status": "failure"
+                    }
+                }
+            },
+            "Response_To_Indicate_Success": {
+                "runAfter": {
+                    "Send_An_Email_(V2)": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Response",
+                "kind": "Http",
+                "inputs": {
+                    "statusCode": 200,
+                    "body": {
+                        "status": "success"
+                    }
+                }
+            },
+            "Send_An_Email_(V2)": {
+                "runAfter": {
+                    "Add_Insights_Details_To_Incident_Comment_(V3)": [
+                        "Succeeded",
+                        "Failed",
+                        "TimedOut"
+                    ],
+                    "Add_Open_Ports_Details_To_Incident_Comment_(V3)": [
+                        "Succeeded",
+                        "TimedOut",
+                        "Failed"
+                    ],
+                    "Add_PDNS_Details_To_Incident_Comment_(V3)": [
+                        "Succeeded",
+                        "TimedOut",
+                        "Failed"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['outlook']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": {
+                        "To": "@variables('email_recipient')",
+                        "Subject": "A malicious IP address has been identified, and an incident has been created for it in Sentinel.\nIP: @{triggerBody()?['indicator_value']}",
+                        "Body": "<p>A malicious IP address @{triggerBody()?['indicator_value']} has been identified, and an incident has been created for it in Sentinel.<br>\n<br>\n<strong>Incident URL: </strong>@{body('Create_Incident_For_Malicious_IP')?['properties']?['incidentUrl']}<br>\n<br>\n<strong>IP: </strong>@{triggerBody()?['indicator_value']}<br>\n<strong>Country Code: </strong>@{variables('country_code')}<br>\n<strong>Open Ports:</strong><br>\n@{variables('open_ports_html_table')}<br>\n<br>\n<strong>PDNS:</strong><br>\n@{variables('pdns_html_table')}<br>\n<br>\n<strong>Insights:</strong><br>\n@{variables('insights_html_table')}</p>",
+                        "Importance": "High"
+                    },
+                    "path": "/v2/Mail"
+                }
+            },
+            "Add_Scout_link_To_Incident_Comment": {
+                "runAfter": {
+                    "Create_Incident_For_Malicious_IP": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "ApiConnection",
+                "inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['azuresentinel-1']['connectionId']"
+                        }
+                    },
+                    "method": "post",
+                    "body": {
+                        "incidentArmId": "@body('Create_Incident_For_Malicious_IP')?['id']",
+                        "message": "<p class=\"editor-paragraph\"><br>@{variables('scout_link')}</p>"
+                    },
+                    "path": "/Incidents/Comment"
+                }
+            },
+            "Initialize_Base_URL": {
+                "runAfter": {
+                    "Initialize_Email_ID": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable",
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "base_url",
+                            "type": "string",
+                            "value": "@{if(empty(triggerBody()?['base_url']), 'https://scout.cymru.com', triggerBody()?['base_url']) }"
+                        }
+                    ]
+                }
+            },
+            "Initialize_Scout_Link": {
+                "runAfter": {
+                    "Initialize_Base_URL": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable",
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "scout_link",
+                            "type": "string",
+                            "value": "Click on the link for more information: <a href=\"@{variables('base_url')}/scout/details?query=@{triggerBody()?['indicator_value']}\">Click here</a>"
+                        }
+                    ]
+                }
+            }
+        },
+        "parameters": {
+            "email_id": {
+                "defaultValue": "bhuvamehul247@gmail.com",
+                "type": "String"
+            },
+            "$connections": {
+                "type": "Object",
+                "defaultValue": {}
+            }
+        }
+    },
+    "parameters": {
+        "$connections": {
+            "type": "Object",
+            "value": {
+                "azuresentinel": {
+                    "id": "/subscriptions/e0687f99-527c-4ffe-b7d5-d6cb9d563dc2/providers/Microsoft.Web/locations/eastus/managedApis/Azuresentinel",
+                    "connectionId": "/subscriptions/e0687f99-527c-4ffe-b7d5-d6cb9d563dc2/resourceGroups/R15_RubrikIntegration_35821/providers/Microsoft.Web/connections/MicrosoftSentinel-TeamCymruScoutCreateIncidentAndNotifyM22",
+                    "connectionName": "MicrosoftSentinel-TeamCymruScoutCreateIncidentAndNotifyM22",
+                    "connectionProperties": {
+                        "authentication": {
+                            "type": "ManagedServiceIdentity"
+                        }
+                    }
+                },
+                "azuremonitorlogs": {
+                    "id": "/subscriptions/e0687f99-527c-4ffe-b7d5-d6cb9d563dc2/providers/Microsoft.Web/locations/eastus/managedApis/Azuremonitorlogs",
+                    "connectionId": "/subscriptions/e0687f99-527c-4ffe-b7d5-d6cb9d563dc2/resourceGroups/R15_RubrikIntegration_35821/providers/Microsoft.Web/connections/Azuremonitorlogs-TeamCymruScoutCreateIncidentAndNotifyM22",
+                    "connectionName": "Azuremonitorlogs-TeamCymruScoutCreateIncidentAndNotifyM22"
+                },
+                "outlook": {
+                    "id": "/subscriptions/e0687f99-527c-4ffe-b7d5-d6cb9d563dc2/providers/Microsoft.Web/locations/eastus/managedApis/Outlook",
+                    "connectionId": "/subscriptions/e0687f99-527c-4ffe-b7d5-d6cb9d563dc2/resourceGroups/R15_RubrikIntegration_35821/providers/Microsoft.Web/connections/Outlook-TeamCymruScoutCreateIncidentAndNotifyM22",
+                    "connectionName": "Outlook-TeamCymruScoutCreateIncidentAndNotifyM22"
+                },
+                "azuresentinel-1": {
+                    "id": "/subscriptions/e0687f99-527c-4ffe-b7d5-d6cb9d563dc2/providers/Microsoft.Web/locations/eastus/managedApis/azuresentinel",
+                    "connectionId": "/subscriptions/e0687f99-527c-4ffe-b7d5-d6cb9d563dc2/resourceGroups/R15_RubrikIntegration_35821/providers/Microsoft.Web/connections/MicrosoftSentinel-RubrikUserInfoWorkflow",
+                    "connectionName": "MicrosoftSentinel-RubrikUserInfoWorkflow",
+                    "connectionProperties": {
+                        "authentication": {
+                            "type": "ManagedServiceIdentity"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
